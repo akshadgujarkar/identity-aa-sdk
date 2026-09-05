@@ -82,14 +82,16 @@ async function handleRpc(body: any): Promise<any> {
   }
 
   if (method === "eth_estimateUserOperationGas") {
+    const [wireOp] = params || [];
+    const isDeploying = Boolean(wireOp && wireOp.initCode && wireOp.initCode.length > 2 && wireOp.initCode !== "0x");
     return {
       jsonrpc: "2.0",
       id,
       result: {
         preVerificationGas: "0x186a0", // 100,000
-        verificationGasLimit: "0x30d40", // 200,000
-        callGasLimit: "0x30d40", // 200,000
-        paymasterVerificationGasLimit: "0x186a0", // 100,000
+        verificationGasLimit: isDeploying ? "0x16e360" : "0x493e0", // 1,500,000 (0x16e360) when deploying, 300,000 (0x493e0) when deployed
+        callGasLimit: "0x493e0", // 300,000
+        paymasterVerificationGasLimit: "0x30d40", // 200,000
       },
     };
   }
@@ -97,14 +99,18 @@ async function handleRpc(body: any): Promise<any> {
   if (method === "eth_sendUserOperation") {
     const [wireOp, entryPointAddress] = params;
     const epAddress = entryPointAddress || ENTRY_POINT_DEFAULT;
+    const isDeploying = Boolean(wireOp && wireOp.initCode && wireOp.initCode.length > 2 && wireOp.initCode !== "0x");
+
+    const defaultAccountGasLimits = isDeploying
+      ? "0x0000000000000000000000000016e360000000000000000000000000000493e0" // 1.5M verification, 300k call
+      : "0x000000000000000000000000000493e0000000000000000000000000000493e0"; // 300k verification, 300k call
 
     const packedOp = {
       sender: wireOp.sender as `0x${string}`,
       nonce: parseHexOrBigInt(wireOp.nonce),
       initCode: (wireOp.initCode || "0x") as `0x${string}`,
       callData: (wireOp.callData || "0x") as `0x${string}`,
-      accountGasLimits: (wireOp.accountGasLimits ||
-        "0x00000000000000000000000000030d4000000000000000000000000000030d40") as `0x${string}`,
+      accountGasLimits: (wireOp.accountGasLimits || defaultAccountGasLimits) as `0x${string}`,
       preVerificationGas: parseHexOrBigInt(wireOp.preVerificationGas || "0x186a0"),
       gasFees: (wireOp.gasFees ||
         "0x0000000000000000000000003b9aca0000000000000000000000000077359400") as `0x${string}`,
@@ -123,7 +129,7 @@ async function handleRpc(body: any): Promise<any> {
         abi: ENTRY_POINT_ABI,
         functionName: "handleOps",
         args: [[packedOp], bundlerAccount.address],
-        gas: 3_000_000n,
+        gas: 5_000_000n,
       });
 
       console.log(`[Bundler] ⛓️ On-Chain Transaction Mined on Anvil! TxHash: ${txHash}`);

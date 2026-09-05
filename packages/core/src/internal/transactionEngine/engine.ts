@@ -170,9 +170,9 @@ export class TransactionEngine {
     }
 
     let verificationGasLimit =
-      gasOverrides?.verificationGasLimit ?? (initCode !== "0x" ? 300_000n : 150_000n);
-    let callGasLimit = gasOverrides?.callGasLimit ?? 100_000n;
-    let preVerificationGas = gasOverrides?.preVerificationGas ?? 50_000n;
+      gasOverrides?.verificationGasLimit ?? (initCode !== "0x" ? 1_500_000n : 300_000n);
+    let callGasLimit = gasOverrides?.callGasLimit ?? 300_000n;
+    let preVerificationGas = gasOverrides?.preVerificationGas ?? 100_000n;
     const maxFeePerGas = gasOverrides?.maxFeePerGas ?? fees.maxFeePerGas;
     const maxPriorityFeePerGas =
       gasOverrides?.maxPriorityFeePerGas ?? fees.maxPriorityFeePerGas;
