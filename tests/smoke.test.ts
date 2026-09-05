@@ -72,8 +72,10 @@ async function main() {
   }
 
   // Verify react
-  const reactResult = useSmartAccount();
-  console.log("  - @identity-aa-sdk/react loaded. SmartAccount hook initialized:", reactResult.isDeployed);
+  console.log("  - @identity-aa-sdk/react loaded. SmartAccount hook defined:", typeof useSmartAccount === "function");
+  if (typeof useSmartAccount !== "function") {
+    throw new Error("@identity-aa-sdk/react did not export useSmartAccount hook");
+  }
 
   // Verify demo
   const demoConfig = getDemoConfig();

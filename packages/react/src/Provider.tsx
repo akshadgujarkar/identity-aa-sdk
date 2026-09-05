@@ -15,15 +15,7 @@ import {
 } from "@identity-aa-sdk/core";
 import { IdentityAAContext, type IdentityAAContextValue } from "./context.js";
 
-export interface IdentityAAProviderProps {
-  /** SDK configuration object (ignored if direct `client` is provided) */
-  readonly config?: SDKConfig;
-  /** Identity resolver adapter (e.g. ClerkIdentityResolver; ignored if direct `client` is provided) */
-  readonly resolver?: IdentityResolver;
-  /** Optional custom KeyStore */
-  readonly keyStore?: KeyStore;
-  /** Pre-instantiated IdentityAASDK client instance */
-  readonly client?: IdentityAASDK;
+export interface IdentityAAProviderBaseProps {
   /** Whether to automatically resolve the account on mount (default: true) */
   readonly autoResolve?: boolean;
   /** Optional explicit identity override for resolution */
@@ -31,6 +23,28 @@ export interface IdentityAAProviderProps {
   /** Children components */
   readonly children?: React.ReactNode;
 }
+
+export interface IdentityAAProviderWithClientProps extends IdentityAAProviderBaseProps {
+  /** Pre-instantiated IdentityAASDK client instance */
+  readonly client: IdentityAASDK;
+  readonly config?: never;
+  readonly resolver?: never;
+  readonly keyStore?: never;
+}
+
+export interface IdentityAAProviderWithConfigProps extends IdentityAAProviderBaseProps {
+  readonly client?: never;
+  /** SDK configuration object */
+  readonly config: SDKConfig;
+  /** Identity resolver adapter (e.g. ClerkIdentityResolver) */
+  readonly resolver: IdentityResolver;
+  /** Optional custom KeyStore */
+  readonly keyStore?: KeyStore;
+}
+
+export type IdentityAAProviderProps =
+  | IdentityAAProviderWithClientProps
+  | IdentityAAProviderWithConfigProps;
 
 /**
  * Root context provider for the Identity AA SDK in React applications.
