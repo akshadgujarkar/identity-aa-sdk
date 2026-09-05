@@ -14,3 +14,16 @@ export { LocalSigner } from "./internal/signer/signer.js";
 export { KeyStore, InMemoryKeyStore } from "./internal/signer/keystore.js";
 export { deriveAccountSalt } from "./internal/salt.js";
 export { ChainClient } from "./internal/chain.js";
+export { TransactionEngine, TransactionStateMachine, type TransactionLifecycleState } from "./internal/transactionEngine/index.js";
+export {
+  type PackedUserOperation,
+  packAccountGasLimits,
+  unpackAccountGasLimits,
+  packGasFees,
+  unpackGasFees,
+  encodeExecuteCalldata,
+  encodeExecuteBatchCalldata,
+  encodeInitCode,
+  getUserOpHash,
+} from "./internal/userOp/index.js";
+

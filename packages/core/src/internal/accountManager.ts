@@ -14,6 +14,7 @@ import { LocalSigner } from "./signer/signer.js";
 import { type KeyStore, InMemoryKeyStore } from "./signer/keystore.js";
 import { deriveAccountSalt } from "./salt.js";
 import { ChainClient } from "./chain.js";
+import { TransactionEngine } from "./transactionEngine/index.js";
 
 export interface AccountManagerOptions {
   readonly config: SDKConfig;
@@ -68,7 +69,16 @@ export class AccountManager {
       // Refresh deployment status
       const isDeployed = await this.chainClient.isContractDeployed(cached.address);
       if (isDeployed !== cached.isDeployed) {
-        const updated = this._createAccountObject(cached.address, isDeployed, chainId, null as any);
+        // Re-create with updated deployment status
+        const signer = await this.keyStore.get(`signer_${identity.provider}_${identity.subjectId}_${chainId}`);
+        const signerAddress = signer ? await signer.getAddress() : "0x0000000000000000000000000000000000000000" as HexAddress;
+        const salt = deriveAccountSalt({
+          identity,
+          chainId,
+          accountImplementationVersion: "1.0.0",
+          signerKeyId: signer?.keyId ?? "",
+        });
+        const updated = this._createAccountObject(cached.address, isDeployed, chainId, signer, signerAddress, salt);
         this.accountCache.set(cacheKey, updated);
         return updated;
       }
@@ -116,7 +126,7 @@ export class AccountManager {
       const isDeployed = await this.chainClient.isContractDeployed(accountAddress);
 
       // 6. Construct Account representation
-      const account = this._createAccountObject(accountAddress, isDeployed, chainId, signer);
+      const account = this._createAccountObject(accountAddress, isDeployed, chainId, signer, signerAddress, salt);
 
       // 7. Store in session cache
       this.accountCache.set(cacheKey, account);
@@ -143,17 +153,53 @@ export class AccountManager {
     address: HexAddress,
     isDeployed: boolean,
     chainId: number,
-    signer: Signer | null
+    signer: Signer | null,
+    signerAddress: HexAddress,
+    salt: HexData
   ): Account {
     return {
       address,
       isDeployed,
       chainId,
-      async sendTransaction(intent: TransactionIntent): Promise<TransactionHandle> {
-        throw new Error("sendTransaction() will be active in Phase 06 Transaction Engine");
+      sendTransaction: async (intent: TransactionIntent): Promise<TransactionHandle> => {
+        if (!signer) {
+          throw new AccountError({
+            code: "SIGNER_UNAVAILABLE",
+            message: "Signing key is unavailable for this account instance",
+            retryable: false,
+          });
+        }
+        const engine = new TransactionEngine({
+          chainClient: this.chainClient,
+          entryPointAddress: this.config.network.entryPointAddress,
+          factoryAddress: this.config.network.factoryAddress,
+          chainId,
+          signer,
+          senderAddress: address,
+          ownerAddress: signerAddress,
+          salt,
+        });
+        return engine.sendTransaction(intent);
       },
-      async execute(intents: TransactionIntent[]): Promise<TransactionHandle> {
-        throw new Error("execute() will be active in Phase 06 Transaction Engine");
+      execute: async (intents: TransactionIntent[]): Promise<TransactionHandle> => {
+        if (!signer) {
+          throw new AccountError({
+            code: "SIGNER_UNAVAILABLE",
+            message: "Signing key is unavailable for this account instance",
+            retryable: false,
+          });
+        }
+        const engine = new TransactionEngine({
+          chainClient: this.chainClient,
+          entryPointAddress: this.config.network.entryPointAddress,
+          factoryAddress: this.config.network.factoryAddress,
+          chainId,
+          signer,
+          senderAddress: address,
+          ownerAddress: signerAddress,
+          salt,
+        });
+        return engine.sendTransaction(intents);
       },
       async signMessage(message: Uint8Array | string): Promise<HexData> {
         if (!signer) {

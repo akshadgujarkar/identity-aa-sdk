@@ -18,6 +18,10 @@ const FACTORY_ABI = parseAbi([
   "function getAddress(address owner, bytes32 salt) external view returns (address)",
 ]);
 
+const ENTRY_POINT_ABI = parseAbi([
+  "function getNonce(address sender, uint192 key) external view returns (uint256)",
+]);
+
 export class ChainClient {
   private readonly client: PublicClient;
 
@@ -35,6 +39,10 @@ export class ChainClient {
         cause: err instanceof Error ? err : undefined,
       });
     }
+  }
+
+  get publicClient(): PublicClient {
+    return this.client;
   }
 
   /**
@@ -94,6 +102,67 @@ export class ChainClient {
         debug: { factoryAddress, owner, salt, error: err instanceof Error ? err.message : String(err) },
         cause: err instanceof Error ? err : undefined,
       });
+    }
+  }
+
+  /**
+   * Queries the EntryPoint for the account's current nonce.
+   */
+  async getNonce(
+    entryPoint: HexAddress,
+    sender: HexAddress,
+    key: bigint = 0n
+  ): Promise<bigint> {
+    try {
+      const data = encodeFunctionData({
+        abi: ENTRY_POINT_ABI,
+        functionName: "getNonce",
+        args: [sender, key],
+      });
+
+      const result = await this.client.call({
+        to: entryPoint,
+        data,
+      });
+
+      if (!result.data) {
+        return 0n;
+      }
+
+      const decoded = decodeFunctionResult({
+        abi: ENTRY_POINT_ABI,
+        functionName: "getNonce",
+        data: result.data,
+      });
+
+      return decoded as bigint;
+    } catch (err: unknown) {
+      throw new NetworkError({
+        code: "NONCE_QUERY_FAILED",
+        message: `Failed to query nonce for sender ${sender}`,
+        retryable: true,
+        debug: { entryPoint, sender, error: err instanceof Error ? err.message : String(err) },
+        cause: err instanceof Error ? err : undefined,
+      });
+    }
+  }
+
+  /**
+   * Queries fee estimates from the node.
+   */
+  async getGasFees(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    try {
+      const fees = await this.client.estimateFeesPerGas();
+      return {
+        maxFeePerGas: fees.maxFeePerGas ?? 2000000000n,
+        maxPriorityFeePerGas: fees.maxPriorityFeePerGas ?? 1000000000n,
+      };
+    } catch {
+      // Fallback sensible defaults if not supported by mock/local RPC
+      return {
+        maxFeePerGas: 2000000000n,
+        maxPriorityFeePerGas: 1000000000n,
+      };
     }
   }
 }

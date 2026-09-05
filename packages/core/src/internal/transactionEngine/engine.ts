@@ -1,0 +1,291 @@
+/**
+ * @identity-aa-sdk/core - Transaction Engine
+ * Specification from docs/TRANSACTION_ENGINE.md and docs/API_DESIGN.md
+ */
+
+import { isAddress } from "viem";
+import type { HexAddress, HexData, Signer } from "../../types/account.js";
+import type { TransactionIntent } from "../../types/transaction.js";
+import {
+  BundlerError,
+  GasError,
+  SigningError,
+  TransactionError,
+} from "../../errors/categories.js";
+import { ChainClient } from "../chain.js";
+import { encodeExecuteCalldata, encodeExecuteBatchCalldata, encodeInitCode } from "../userOp/calldata.js";
+import { packAccountGasLimits, packGasFees, type PackedUserOperation } from "../userOp/types.js";
+import { getUserOpHash } from "../userOp/hash.js";
+import { TransactionStateMachine } from "./stateMachine.js";
+
+export interface TransactionEngineOptions {
+  readonly chainClient: ChainClient;
+  readonly entryPointAddress: HexAddress;
+  readonly factoryAddress?: HexAddress;
+  readonly chainId: number;
+  readonly signer: Signer;
+  readonly senderAddress: HexAddress;
+  readonly ownerAddress: HexAddress;
+  readonly salt: HexData;
+  /** Optional submit handler for mocking or Phase 7 BundlerClient integration */
+  readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
+}
+
+export class TransactionEngine {
+  private readonly chainClient: ChainClient;
+  private readonly entryPointAddress: HexAddress;
+  private readonly factoryAddress?: HexAddress;
+  private readonly chainId: number;
+  private readonly signer: Signer;
+  private readonly senderAddress: HexAddress;
+  private readonly ownerAddress: HexAddress;
+  private readonly salt: HexData;
+  private readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
+
+  constructor(options: TransactionEngineOptions) {
+    this.chainClient = options.chainClient;
+    this.entryPointAddress = options.entryPointAddress;
+    this.factoryAddress = options.factoryAddress;
+    this.chainId = options.chainId;
+    this.signer = options.signer;
+    this.senderAddress = options.senderAddress;
+    this.ownerAddress = options.ownerAddress;
+    this.salt = options.salt;
+    this.submitHandler = options.submitHandler;
+  }
+
+  /**
+   * Validates a transaction intent or batch of intents.
+   */
+  public validateIntents(intents: readonly TransactionIntent[]): void {
+    if (!intents || intents.length === 0) {
+      throw new TransactionError({
+        code: "EMPTY_INTENT_BATCH",
+        message: "Transaction intent batch must contain at least one intent",
+        retryable: false,
+      });
+    }
+
+    for (let i = 0; i < intents.length; i++) {
+      const intent = intents[i];
+      if (!intent || !intent.to || !isAddress(intent.to)) {
+        throw new TransactionError({
+          code: "INVALID_INTENT_RECIPIENT",
+          message: `Intent at index ${i} has invalid or missing 'to' address: ${intent?.to}`,
+          context: { index: i, intent },
+          retryable: false,
+        });
+      }
+
+      if (intent.value !== undefined) {
+        try {
+          const val = typeof intent.value === "bigint" ? intent.value : BigInt(intent.value);
+          if (val < 0n) {
+            throw new Error("Negative value");
+          }
+        } catch {
+          throw new TransactionError({
+            code: "INVALID_INTENT_VALUE",
+            message: `Intent at index ${i} has invalid 'value': ${intent.value}`,
+            context: { index: i, intent },
+            retryable: false,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Builds an unsigned PackedUserOperation from transaction intents.
+   */
+  public async buildUserOp(
+    intents: readonly TransactionIntent[],
+    gasOverrides?: Partial<{
+      callGasLimit: bigint;
+      verificationGasLimit: bigint;
+      preVerificationGas: bigint;
+      maxFeePerGas: bigint;
+      maxPriorityFeePerGas: bigint;
+    }>
+  ): Promise<{ userOp: PackedUserOperation; userOpHash: HexData }> {
+    this.validateIntents(intents);
+
+    // 1. Resolve Account Deployment State
+    const isDeployed = await this.chainClient.isContractDeployed(this.senderAddress);
+    const initCode = isDeployed || !this.factoryAddress
+      ? "0x"
+      : encodeInitCode(this.factoryAddress, this.ownerAddress, this.salt);
+
+    // 2. Resolve Nonce
+    const nonce = await this.chainClient.getNonce(
+      this.entryPointAddress,
+      this.senderAddress
+    );
+
+    // 3. Encode Calldata
+    const callData =
+      intents.length === 1
+        ? encodeExecuteCalldata(intents[0])
+        : encodeExecuteBatchCalldata(intents);
+
+    // 4. Gas Estimation / Defaults
+    let fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
+    try {
+      fees = await this.chainClient.getGasFees();
+    } catch (err) {
+      throw new GasError({
+        code: "GAS_FEE_QUERY_FAILED",
+        message: "Failed to retrieve gas fee estimates",
+        retryable: true,
+        cause: err instanceof Error ? err : undefined,
+      });
+    }
+
+    const verificationGasLimit =
+      gasOverrides?.verificationGasLimit ?? (initCode !== "0x" ? 300_000n : 150_000n);
+    const callGasLimit = gasOverrides?.callGasLimit ?? 100_000n;
+    const preVerificationGas = gasOverrides?.preVerificationGas ?? 50_000n;
+    const maxFeePerGas = gasOverrides?.maxFeePerGas ?? fees.maxFeePerGas;
+    const maxPriorityFeePerGas =
+      gasOverrides?.maxPriorityFeePerGas ?? fees.maxPriorityFeePerGas;
+
+    const accountGasLimits = packAccountGasLimits(verificationGasLimit, callGasLimit);
+    const gasFees = packGasFees(maxPriorityFeePerGas, maxFeePerGas);
+
+    const userOp: PackedUserOperation = {
+      sender: this.senderAddress,
+      nonce,
+      initCode,
+      callData,
+      accountGasLimits,
+      preVerificationGas,
+      gasFees,
+      paymasterAndData: "0x",
+      signature: "0x",
+    };
+
+    const userOpHash = getUserOpHash(
+      userOp,
+      this.entryPointAddress,
+      this.chainId
+    );
+
+    return { userOp, userOpHash };
+  }
+
+  /**
+   * Signs a packed UserOperation using the client's signer.
+   */
+  public async signUserOp(userOp: PackedUserOperation): Promise<PackedUserOperation> {
+    const hash = getUserOpHash(
+      userOp,
+      this.entryPointAddress,
+      this.chainId
+    );
+
+    try {
+      const signature = await this.signer.signHash(hash);
+      return {
+        ...userOp,
+        signature,
+      };
+    } catch (err) {
+      throw new SigningError({
+        code: "USEROP_SIGNING_FAILED",
+        message: `Failed to sign UserOperation: ${err instanceof Error ? err.message : String(err)}`,
+        context: { userOpHash: hash },
+        retryable: false,
+        cause: err instanceof Error ? err : undefined,
+      });
+    }
+  }
+
+  /**
+   * Sends a transaction or batch of transactions through the complete state machine lifecycle.
+   */
+  public async sendTransaction(
+    intents: TransactionIntent | readonly TransactionIntent[]
+  ): Promise<TransactionStateMachine> {
+    const intentArray = Array.isArray(intents) ? intents : [intents];
+    const sm = new TransactionStateMachine();
+
+    // 1. Building State
+    try {
+      this.validateIntents(intentArray);
+    } catch (err) {
+      const sdkErr =
+        err instanceof TransactionError
+          ? err
+          : new TransactionError({
+              message: "Intent validation failed",
+              cause: err instanceof Error ? err : undefined,
+              retryable: false,
+            });
+      sm.fail(sdkErr);
+      throw sdkErr;
+    }
+
+    // 2. Estimating State
+    sm.transitionTo("Estimating");
+    let builtOp: { userOp: PackedUserOperation; userOpHash: HexData };
+    try {
+      builtOp = await this.buildUserOp(intentArray);
+      sm.setUserOpHash(builtOp.userOpHash);
+    } catch (err) {
+      const gasErr =
+        err instanceof GasError
+          ? err
+          : new GasError({
+              code: "GAS_ESTIMATION_FAILED",
+              message: `Gas estimation failed: ${err instanceof Error ? err.message : String(err)}`,
+              cause: err instanceof Error ? err : undefined,
+            });
+      sm.fail(gasErr);
+      throw gasErr;
+    }
+
+    // 3. Signing State
+    sm.transitionTo("Signing");
+    let signedOp: PackedUserOperation;
+    try {
+      signedOp = await this.signUserOp(builtOp.userOp);
+    } catch (err) {
+      const signErr =
+        err instanceof SigningError
+          ? err
+          : new SigningError({
+              code: "SIGNING_FAILED",
+              message: `Signing failed: ${err instanceof Error ? err.message : String(err)}`,
+              cause: err instanceof Error ? err : undefined,
+            });
+      sm.fail(signErr);
+      throw signErr;
+    }
+
+    // 4. Submitting State
+    sm.transitionTo("Submitting");
+    try {
+      if (this.submitHandler) {
+        const submittedHash = await this.submitHandler(signedOp);
+        sm.setUserOpHash(submittedHash);
+      }
+    } catch (err) {
+      const bundlerErr =
+        err instanceof BundlerError
+          ? err
+          : new BundlerError({
+              code: "BUNDLER_SUBMISSION_FAILED",
+              message: `Bundler submission failed: ${err instanceof Error ? err.message : String(err)}`,
+              cause: err instanceof Error ? err : undefined,
+              retryable: true,
+            });
+      sm.fail(bundlerErr);
+      throw bundlerErr;
+    }
+
+    // 5. Pending State
+    sm.transitionTo("Pending");
+
+    return sm;
+  }
+}
