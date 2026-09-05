@@ -11,8 +11,8 @@ import { type IdentityResolver, type AppIdentity, IdentityError } from "@identit
  */
 export interface ClerkUserLike {
   readonly id: string;
-  readonly primaryEmailAddress?: { readonly emailAddress: string } | string;
-  readonly emailAddresses?: ReadonlyArray<{ readonly emailAddress: string }>;
+  readonly primaryEmailAddress?: { readonly emailAddress: string } | string | null;
+  readonly emailAddresses?: ReadonlyArray<{ readonly emailAddress: string }> | null;
 }
 
 /**

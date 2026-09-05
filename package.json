@@ -9,6 +9,7 @@
     "tests"
   ],
   "scripts": {
+    "dev": "vite demo",
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "test": "npm run test:contracts && npm run test:unit && npm run test:smoke",
@@ -20,12 +21,15 @@
     "test:smoke": "tsx tests/smoke.test.ts"
   },
   "devDependencies": {
+    "@clerk/clerk-react": "^5.61.9",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^8.2.2"
   }
 }
