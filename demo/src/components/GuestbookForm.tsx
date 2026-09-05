@@ -16,7 +16,7 @@ export interface GuestbookFormProps {
 export function GuestbookForm({ user, onEntrySubmitted }: GuestbookFormProps): React.JSX.Element {
   const [message, setMessage] = useState("");
   const { address } = useSmartAccount();
-  const { send, status, isLoading, isSuccess, isError, transactionHash, error, reset } = useTransaction();
+  const { send, status, isLoading, isSuccess, isError, transactionHash, userOpHash, error, reset } = useTransaction();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,9 +159,23 @@ export function GuestbookForm({ user, onEntrySubmitted }: GuestbookFormProps): R
         </div>
       )}
 
-      {transactionHash && (
-        <div style={{ marginTop: "12px", fontSize: "12px", color: "#6b7280" }}>
-          Transaction Hash: <code style={{ color: "#9ca3af" }}>{transactionHash}</code>
+      {userOpHash && (
+        <div style={{ marginTop: "12px", padding: "10px 12px", borderRadius: "8px", backgroundColor: "#121217", border: "1px solid #1f2937", fontSize: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+            <span style={{ color: "#9ca3af", fontWeight: 600 }}>⚡ UserOperation Hash:</span>
+            <span style={{ color: "#818cf8", fontSize: "11px" }}>ERC-4337</span>
+          </div>
+          <code style={{ color: "#a5b4fc", wordBreak: "break-all" }}>{userOpHash}</code>
+        </div>
+      )}
+
+      {transactionHash && transactionHash !== userOpHash && (
+        <div style={{ marginTop: "8px", padding: "10px 12px", borderRadius: "8px", backgroundColor: "#121217", border: "1px solid #1f2937", fontSize: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+            <span style={{ color: "#9ca3af", fontWeight: 600 }}>⛓️ On-Chain Tx Hash:</span>
+            <span style={{ color: "#34d399", fontSize: "11px" }}>Mined</span>
+          </div>
+          <code style={{ color: "#34d399", wordBreak: "break-all" }}>{transactionHash}</code>
         </div>
       )}
     </div>

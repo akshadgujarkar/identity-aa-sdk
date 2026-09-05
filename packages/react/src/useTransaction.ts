@@ -47,8 +47,10 @@ export interface UseTransactionResult {
   readonly receipt: Receipt | undefined;
   /** Handle for the active or completed transaction */
   readonly handle: TransactionHandle | undefined;
-  /** Transaction hash if submitted or confirmed */
+  /** On-chain transaction hash if submitted or confirmed */
   readonly transactionHash: HexData | undefined;
+  /** ERC-4337 UserOperation hash */
+  readonly userOpHash: HexData | undefined;
   /** Reset hook state back to idle */
   readonly reset: () => void;
 }
@@ -158,7 +160,7 @@ export function useTransaction(options: UseTransactionOptions = {}): UseTransact
           return txReceipt;
         } else {
           setState("failed");
-          const failErr = new Error("Batch transaction execution reverted on-chain.");
+          const failErr = new Error("Batch execution reverted on-chain.");
           setError(failErr);
           optionsRef.current.onError?.(failErr);
           throw failErr;
@@ -194,6 +196,30 @@ export function useTransaction(options: UseTransactionOptions = {}): UseTransact
         setHandle(txHandle);
         setState("submitted");
         optionsRef.current.onSubmitted?.(txHandle);
+
+        // Background handler for async completion
+        txHandle
+          .wait(optionsRef.current.timeoutMs)
+          .then((txReceipt) => {
+            setReceipt(txReceipt);
+            if (txReceipt.success) {
+              setState("confirmed");
+              optionsRef.current.onSuccess?.(txReceipt);
+              void refetchAccount();
+            } else {
+              setState("failed");
+              const failErr = new Error("Transaction execution reverted on-chain.");
+              setError(failErr);
+              optionsRef.current.onError?.(failErr);
+            }
+          })
+          .catch((err: unknown) => {
+            const normalizedErr = err instanceof Error ? err : new Error(String(err));
+            setError(normalizedErr);
+            setState("failed");
+            optionsRef.current.onError?.(normalizedErr);
+          });
+
         return txHandle;
       } catch (err: unknown) {
         const normalizedErr = err instanceof Error ? err : new Error(String(err));
@@ -203,7 +229,7 @@ export function useTransaction(options: UseTransactionOptions = {}): UseTransact
         throw normalizedErr;
       }
     },
-    [account]
+    [account, refetchAccount]
   );
 
   const isLoading = state !== "idle" && state !== "confirmed" && state !== "failed";
@@ -212,6 +238,13 @@ export function useTransaction(options: UseTransactionOptions = {}): UseTransact
 
   const status: "idle" | "loading" | "success" | "error" =
     isSuccess ? "success" : isError ? "error" : isLoading ? "loading" : "idle";
+
+  const userOpHash =
+    handle?.userOpHash ??
+    receipt?.userOpHash ??
+    (handle?.transactionHash ? handle.transactionHash : undefined);
+
+  const transactionHash = receipt?.transactionHash ?? handle?.transactionHash;
 
   return {
     send,
@@ -225,7 +258,8 @@ export function useTransaction(options: UseTransactionOptions = {}): UseTransact
     error,
     receipt,
     handle,
-    transactionHash: handle?.transactionHash ?? receipt?.transactionHash,
+    transactionHash,
+    userOpHash,
     reset,
   };
 }

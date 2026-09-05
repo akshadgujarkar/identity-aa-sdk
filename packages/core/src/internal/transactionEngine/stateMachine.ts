@@ -57,8 +57,12 @@ export class TransactionStateMachine implements TransactionHandle {
     return this._state;
   }
 
-  get transactionHash(): HexData {
+  get userOpHash(): HexData {
     return this._userOpHash;
+  }
+
+  get transactionHash(): HexData {
+    return this._receipt?.transactionHash || this._userOpHash;
   }
 
   get error(): SDKError | undefined {

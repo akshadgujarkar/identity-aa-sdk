@@ -23,6 +23,8 @@ export interface TransactionIntent {
 export interface Receipt {
   /** The transaction hash on the blockchain */
   readonly transactionHash: HexData;
+  /** The ERC-4337 UserOperation hash if executed via AA bundler */
+  readonly userOpHash?: HexData;
   /** Block number in which the transaction was included */
   readonly blockNumber: bigint | number;
   /** Block hash if available */
@@ -41,6 +43,8 @@ export interface Receipt {
 export interface TransactionHandle {
   /** The transaction or userOperation submission identifier */
   readonly transactionHash: HexData;
+  /** The ERC-4337 UserOperation hash if available */
+  readonly userOpHash?: HexData;
   /** Wait for the transaction to be mined and return the receipt */
   wait(timeoutMs?: number): Promise<Receipt>;
 }

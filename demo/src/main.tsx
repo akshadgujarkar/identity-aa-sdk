@@ -61,7 +61,7 @@ function LiveSDKTester({
   onAddEntry: (entry: GuestbookEntry) => void;
 }) {
   const { address, isDeployed, isLoading: isResolvingAccount, error: accountError } = useSmartAccount();
-  const { send, isLoading: isTxSending, isSuccess, transactionHash, error: txError, reset } = useTransaction();
+  const { send, isLoading: isTxSending, isSuccess, transactionHash, userOpHash, error: txError, reset } = useTransaction();
   const [message, setMessage] = useState("");
   const [customTo, setCustomTo] = useState("0x0000000000000000000000000000000000000001");
   const [activeTab, setActiveTab] = useState<"guestbook" | "custom">("guestbook");
@@ -178,13 +178,13 @@ function LiveSDKTester({
             Smart Account Address (Deterministic CREATE2)
           </div>
           <div style={{ fontFamily: "monospace", fontSize: "15px", color: "#60a5fa", wordBreak: "break-all" }}>
-            {address || (isResolvingAccount ? "Computing address from identity..." : "Address unavailable")}
+            {address || (isResolvingAccount ? "Resolving..." : "Error resolving account")}
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         <button
           type="button"
           onClick={() => setActiveTab("guestbook")}
@@ -277,9 +277,23 @@ function LiveSDKTester({
             </div>
           </form>
 
-          {transactionHash && (
-            <div style={{ marginTop: "16px", padding: "10px", borderRadius: "6px", backgroundColor: "#0d0d12", fontSize: "12px" }}>
-              Tx Hash: <code style={{ color: "#34d399" }}>{transactionHash}</code>
+          {userOpHash && (
+            <div style={{ marginTop: "16px", padding: "12px 14px", borderRadius: "8px", backgroundColor: "#0d0d12", border: "1px solid #1f2937", fontSize: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <span style={{ color: "#9ca3af", fontWeight: 600 }}>⚡ UserOperation Hash (ERC-4337):</span>
+                <span style={{ color: "#818cf8", fontSize: "11px" }}>Smart Account Action</span>
+              </div>
+              <code style={{ color: "#a5b4fc", wordBreak: "break-all" }}>{userOpHash}</code>
+            </div>
+          )}
+
+          {transactionHash && transactionHash !== userOpHash && (
+            <div style={{ marginTop: "10px", padding: "12px 14px", borderRadius: "8px", backgroundColor: "#0d0d12", border: "1px solid #1f2937", fontSize: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <span style={{ color: "#9ca3af", fontWeight: 600 }}>⛓️ On-Chain Transaction Hash:</span>
+                <span style={{ color: "#34d399", fontSize: "11px" }}>Mined on Anvil</span>
+              </div>
+              <code style={{ color: "#34d399", wordBreak: "break-all" }}>{transactionHash}</code>
             </div>
           )}
 

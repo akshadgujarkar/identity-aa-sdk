@@ -48,6 +48,7 @@ export interface BundlerReceiptRpcResponse {
   success: boolean | string;
   reason?: string;
   logs: unknown[];
+  txHash?: string;
   receipt: {
     transactionHash: string;
     blockNumber: string;
@@ -249,10 +250,13 @@ export class BundlerClient {
       rawReceipt.receipt?.status === "0x1" ||
       rawReceipt.receipt?.status === 1;
 
-    const txHash =
+    const onChainTxHash =
       (rawReceipt.receipt?.transactionHash as HexData) ||
+      (rawReceipt.txHash as HexData) ||
       (rawReceipt.userOpHash as HexData) ||
       userOpHash;
+
+    const opHash = (rawReceipt.userOpHash as HexData) || userOpHash;
 
     const blockNum = rawReceipt.receipt?.blockNumber
       ? parseHexBigInt(rawReceipt.receipt.blockNumber)
@@ -265,7 +269,8 @@ export class BundlerClient {
       : undefined;
 
     return {
-      transactionHash: txHash,
+      transactionHash: onChainTxHash,
+      userOpHash: opHash,
       blockNumber: blockNum,
       success: isSuccess,
       gasUsed,
