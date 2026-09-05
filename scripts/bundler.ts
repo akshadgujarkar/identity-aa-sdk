@@ -16,7 +16,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const PORT = 4337;
 const ANVIL_RPC = "http://127.0.0.1:8545";
-const ENTRY_POINT_DEFAULT = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
+const ENTRY_POINT_DEFAULT = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 // Anvil dev account #0
 const BUNDLER_PRIVATE_KEY =

@@ -16,7 +16,7 @@ test("Config - Valid development config parses successfully", () => {
   assert.equal(config.environment, "development");
   assert.equal(config.network.chainId, 31337);
   assert.equal(config.network.rpcUrl, "http://127.0.0.1:8545");
-  assert.equal(config.network.entryPointAddress, VALID_ENTRY_POINT);
+  assert.equal(config.network.entryPointAddress, DEFAULT_LOCAL_NETWORK.entryPointAddress);
   assert.equal(config.clerkPublishableKey, "pk_test_sample123");
 });
 
