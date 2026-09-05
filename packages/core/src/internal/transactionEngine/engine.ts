@@ -10,10 +10,13 @@ import {
   BundlerError,
   GasError,
   SigningError,
+  SponsorshipError,
   TransactionError,
 } from "../../errors/categories.js";
 import { ChainClient } from "../chain.js";
 import { BundlerClient } from "../bundler/bundlerClient.js";
+import { GasPolicyManager } from "../gasPolicy/gasPolicy.js";
+import { PaymasterClient, packPaymasterAndData } from "../paymaster/paymasterClient.js";
 import { encodeExecuteCalldata, encodeExecuteBatchCalldata, encodeInitCode } from "../userOp/calldata.js";
 import { packAccountGasLimits, packGasFees, type PackedUserOperation } from "../userOp/types.js";
 import { getUserOpHash } from "../userOp/hash.js";
@@ -32,6 +35,14 @@ export interface TransactionEngineOptions {
   readonly bundlerClient?: BundlerClient;
   /** Optional custom submit handler for mocking or testing */
   readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
+  /** Optional Paymaster contract address for gas sponsorship */
+  readonly paymasterAddress?: HexAddress;
+  /** Optional GasPolicyManager for evaluating sponsorship policies */
+  readonly gasPolicyManager?: GasPolicyManager;
+  /** Optional PaymasterClient instance */
+  readonly paymasterClient?: PaymasterClient;
+  /** Optional user subject identifier for rate-limiting and spend caps */
+  readonly subjectKey?: string;
 }
 
 export class TransactionEngine {
@@ -45,6 +56,10 @@ export class TransactionEngine {
   private readonly salt: HexData;
   private readonly bundlerClient?: BundlerClient;
   private readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
+  private readonly paymasterAddress?: HexAddress;
+  private readonly gasPolicyManager?: GasPolicyManager;
+  private readonly paymasterClient?: PaymasterClient;
+  private readonly subjectKey?: string;
 
   constructor(options: TransactionEngineOptions) {
     this.chainClient = options.chainClient;
@@ -57,6 +72,10 @@ export class TransactionEngine {
     this.salt = options.salt;
     this.bundlerClient = options.bundlerClient;
     this.submitHandler = options.submitHandler;
+    this.paymasterAddress = options.paymasterAddress;
+    this.gasPolicyManager = options.gasPolicyManager;
+    this.paymasterClient = options.paymasterClient;
+    this.subjectKey = options.subjectKey;
   }
 
   /**
@@ -154,6 +173,26 @@ export class TransactionEngine {
     const maxPriorityFeePerGas =
       gasOverrides?.maxPriorityFeePerGas ?? fees.maxPriorityFeePerGas;
 
+    // 4. Gas Policy & Sponsorship Evaluation
+    let paymasterAndData: HexData = "0x";
+    if (this.gasPolicyManager && this.paymasterAddress) {
+      const estimatedCost = (verificationGasLimit + callGasLimit + preVerificationGas) * maxFeePerGas;
+      const decision = this.gasPolicyManager.evaluateSponsorship(
+        intents,
+        this.subjectKey || this.senderAddress,
+        estimatedCost
+      );
+
+      if (decision.approved) {
+        const pmClient =
+          this.paymasterClient ??
+          new PaymasterClient({ paymasterAddress: this.paymasterAddress });
+        paymasterAndData = pmClient.generatePaymasterAndData({
+          paymasterAddress: this.paymasterAddress,
+        });
+      }
+    }
+
     // Optional real ERC-4337 gas estimation via BundlerClient
     if (this.bundlerClient && !gasOverrides) {
       try {
@@ -165,7 +204,7 @@ export class TransactionEngine {
           accountGasLimits: packAccountGasLimits(verificationGasLimit, callGasLimit),
           preVerificationGas,
           gasFees: packGasFees(maxPriorityFeePerGas, maxFeePerGas),
-          paymasterAndData: "0x",
+          paymasterAndData,
           signature: ("0x" + "00".repeat(65)) as HexData,
         };
         const estimates = await this.bundlerClient.estimateUserOperationGas(
@@ -175,8 +214,22 @@ export class TransactionEngine {
         verificationGasLimit = estimates.verificationGasLimit;
         callGasLimit = estimates.callGasLimit;
         preVerificationGas = estimates.preVerificationGas;
+
+        if (
+          paymasterAndData !== "0x" &&
+          this.paymasterAddress &&
+          estimates.paymasterVerificationGasLimit !== undefined
+        ) {
+          const pmClient =
+            this.paymasterClient ??
+            new PaymasterClient({ paymasterAddress: this.paymasterAddress });
+          paymasterAndData = pmClient.generatePaymasterAndData({
+            paymasterAddress: this.paymasterAddress,
+            verificationGasLimit: estimates.paymasterVerificationGasLimit,
+          });
+        }
       } catch (err) {
-        if (err instanceof GasError || err instanceof BundlerError) {
+        if (err instanceof GasError || err instanceof BundlerError || err instanceof SponsorshipError) {
           throw err;
         }
         throw new GasError({
@@ -199,7 +252,7 @@ export class TransactionEngine {
       accountGasLimits,
       preVerificationGas,
       gasFees,
-      paymasterAndData: "0x",
+      paymasterAndData,
       signature: "0x",
     };
 
@@ -272,6 +325,10 @@ export class TransactionEngine {
       builtOp = await this.buildUserOp(intentArray);
       sm.setUserOpHash(builtOp.userOpHash);
     } catch (err) {
+      if (err instanceof SponsorshipError) {
+        sm.fail(err);
+        throw err;
+      }
       const gasErr =
         err instanceof GasError
           ? err

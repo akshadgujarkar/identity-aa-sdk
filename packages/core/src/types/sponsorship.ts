@@ -40,3 +40,13 @@ export interface SponsorshipPolicy {
   /** Whether to fall back to unsponsored transaction if sponsorship is denied */
   readonly fallbackToUnsponsored?: boolean;
 }
+
+export interface SponsorshipDecision {
+  /** Whether gas sponsorship was approved by policy */
+  readonly approved: boolean;
+  /** Denial or fallback reason if not approved */
+  readonly reason?: string;
+  /** Whether policy allows falling back to unsponsored execution */
+  readonly fallbackToUnsponsored?: boolean;
+}
+

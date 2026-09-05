@@ -58,6 +58,7 @@ export class IdentityAASDK {
         ...this._config,
         sponsorship: options.sponsorship,
       });
+      this.accountManager.configure(options);
     }
   }
 }

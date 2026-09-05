@@ -33,5 +33,14 @@ export {
   translateBundlerError,
   extractAACode,
 } from "./internal/bundler/index.js";
+export { GasPolicyManager } from "./internal/gasPolicy/index.js";
+export {
+  PaymasterClient,
+  type PaymasterClientOptions,
+  type UnpackedPaymasterAndData,
+  packPaymasterAndData,
+  unpackPaymasterAndData,
+} from "./internal/paymaster/index.js";
+
 
 

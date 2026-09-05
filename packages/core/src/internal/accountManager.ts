@@ -9,12 +9,14 @@ import type { SDKConfig } from "../config/schema.js";
 import type { AppIdentity, AccountKey, IdentityResolver } from "../types/identity.js";
 import type { Account, HexAddress, HexData, Signer } from "../types/account.js";
 import type { TransactionIntent, TransactionHandle } from "../types/transaction.js";
+import type { SponsorshipPolicy } from "../types/sponsorship.js";
 import { AccountError, IdentityError } from "../errors/categories.js";
 import { LocalSigner } from "./signer/signer.js";
 import { type KeyStore, InMemoryKeyStore } from "./signer/keystore.js";
 import { deriveAccountSalt } from "./salt.js";
 import { ChainClient } from "./chain.js";
 import { BundlerClient } from "./bundler/bundlerClient.js";
+import { GasPolicyManager } from "./gasPolicy/gasPolicy.js";
 import { TransactionEngine } from "./transactionEngine/index.js";
 
 export interface AccountManagerOptions {
@@ -23,6 +25,7 @@ export interface AccountManagerOptions {
   readonly keyStore?: KeyStore;
   readonly chainClient?: ChainClient;
   readonly bundlerClient?: BundlerClient;
+  readonly gasPolicyManager?: GasPolicyManager;
 }
 
 /**
@@ -35,6 +38,7 @@ export class AccountManager {
   private readonly keyStore: KeyStore;
   private readonly chainClient: ChainClient;
   private readonly bundlerClient: BundlerClient;
+  private readonly gasPolicyManager: GasPolicyManager;
   private readonly accountCache = new Map<string, Account>();
 
   constructor(options: AccountManagerOptions) {
@@ -48,6 +52,18 @@ export class AccountManager {
         bundlerUrl: options.config.network.bundlerUrl ?? "http://127.0.0.1:4337",
         entryPointAddress: options.config.network.entryPointAddress,
       });
+    this.gasPolicyManager =
+      options.gasPolicyManager ??
+      new GasPolicyManager(options.config.sponsorship, options.config.environment);
+  }
+
+  /**
+   * Updates runtime sponsorship policy dynamically.
+   */
+  public configure(options: { sponsorship?: SponsorshipPolicy }): void {
+    if (options.sponsorship !== undefined) {
+      this.gasPolicyManager.setPolicy(options.sponsorship);
+    }
   }
 
   /**
@@ -87,7 +103,15 @@ export class AccountManager {
           accountImplementationVersion: "1.0.0",
           signerKeyId: signer?.keyId ?? "",
         });
-        const updated = this._createAccountObject(cached.address, isDeployed, chainId, signer, signerAddress, salt);
+        const updated = this._createAccountObject(
+          cached.address,
+          isDeployed,
+          chainId,
+          signer,
+          signerAddress,
+          salt,
+          identity.subjectId
+        );
         this.accountCache.set(cacheKey, updated);
         return updated;
       }
@@ -135,7 +159,15 @@ export class AccountManager {
       const isDeployed = await this.chainClient.isContractDeployed(accountAddress);
 
       // 6. Construct Account representation
-      const account = this._createAccountObject(accountAddress, isDeployed, chainId, signer, signerAddress, salt);
+      const account = this._createAccountObject(
+        accountAddress,
+        isDeployed,
+        chainId,
+        signer,
+        signerAddress,
+        salt,
+        identity.subjectId
+      );
 
       // 7. Store in session cache
       this.accountCache.set(cacheKey, account);
@@ -164,7 +196,8 @@ export class AccountManager {
     chainId: number,
     signer: Signer | null,
     signerAddress: HexAddress,
-    salt: HexData
+    salt: HexData,
+    subjectKey?: string
   ): Account {
     return {
       address,
@@ -188,6 +221,9 @@ export class AccountManager {
           ownerAddress: signerAddress,
           salt,
           bundlerClient: this.bundlerClient,
+          paymasterAddress: this.config.network.paymasterAddress,
+          gasPolicyManager: this.gasPolicyManager,
+          subjectKey,
         });
         return engine.sendTransaction(intent);
       },
@@ -209,6 +245,9 @@ export class AccountManager {
           ownerAddress: signerAddress,
           salt,
           bundlerClient: this.bundlerClient,
+          paymasterAddress: this.config.network.paymasterAddress,
+          gasPolicyManager: this.gasPolicyManager,
+          subjectKey,
         });
         return engine.sendTransaction(intents);
       },
