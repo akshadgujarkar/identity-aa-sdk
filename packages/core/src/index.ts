@@ -6,3 +6,11 @@
 export * from "./types/index.js";
 export * from "./errors/index.js";
 export * from "./config/index.js";
+export * from "./sdk.js";
+
+// Export internal building blocks for advanced integrations / sibling packages
+export { AccountManager } from "./internal/accountManager.js";
+export { LocalSigner } from "./internal/signer/signer.js";
+export { KeyStore, InMemoryKeyStore } from "./internal/signer/keystore.js";
+export { deriveAccountSalt } from "./internal/salt.js";
+export { ChainClient } from "./internal/chain.js";
