@@ -450,6 +450,17 @@ export class TransactionEngine {
             }
           }
         });
+    } else {
+      // Direct / local simulation mode: automatically confirm receipt
+      setTimeout(() => {
+        if (sm.state === "Pending") {
+          sm.confirm({
+            transactionHash: sm.transactionHash || builtOp.userOpHash,
+            blockNumber: 1n,
+            success: true,
+          });
+        }
+      }, 300);
     }
 
     return sm;
