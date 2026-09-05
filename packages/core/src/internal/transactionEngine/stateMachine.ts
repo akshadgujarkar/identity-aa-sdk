@@ -88,8 +88,9 @@ export class TransactionStateMachine implements TransactionHandle {
     const allowed = ALLOWED_TRANSITIONS[this._state];
     if (!allowed.includes(nextState)) {
       const transitionErr = new TransactionError({
+        code: "INVALID_STATE_TRANSITION",
         message: `Invalid state transition from ${this._state} to ${nextState}`,
-        context: { currentState: this._state, nextState },
+        debug: { currentState: this._state, nextState },
         retryable: false,
       });
       this._error = transitionErr;
@@ -108,14 +109,16 @@ export class TransactionStateMachine implements TransactionHandle {
 
     if (nextState === "Failed") {
       const err = this._error ?? new TransactionError({
+        code: "TRANSACTION_FAILED",
         message: "Transaction failed with an unknown error",
-        context: { userOpHash: this._userOpHash },
+        debug: { userOpHash: this._userOpHash },
       });
       this._rejectWait(err);
     } else if (nextState === "Dropped") {
       const dropErr = this._error ?? new TransactionError({
+        code: "TRANSACTION_DROPPED",
         message: "Transaction was dropped from mempool or timed out",
-        context: { userOpHash: this._userOpHash },
+        debug: { userOpHash: this._userOpHash },
         retryable: true,
       });
       this._rejectWait(dropErr);
@@ -129,8 +132,9 @@ export class TransactionStateMachine implements TransactionHandle {
       this._resolveWait(receipt);
     } else {
       const execError = new TransactionError({
+        code: "EXECUTION_REVERTED",
         message: "Transaction reverted on-chain during execution",
-        context: { receipt },
+        debug: { receipt },
         retryable: false,
       });
       this.transitionTo("Failed", execError);
@@ -143,8 +147,9 @@ export class TransactionStateMachine implements TransactionHandle {
 
   public drop(reason: string): void {
     const dropError = new TransactionError({
+      code: "TRANSACTION_DROPPED",
       message: `Transaction dropped: ${reason}`,
-      context: { reason, userOpHash: this._userOpHash },
+      debug: { reason, userOpHash: this._userOpHash },
       retryable: true,
     });
     this.transitionTo("Dropped", dropError);
@@ -166,8 +171,9 @@ export class TransactionStateMachine implements TransactionHandle {
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         const timeoutErr = new TransactionError({
+          code: "TRANSACTION_TIMEOUT",
           message: `Transaction timed out after ${timeoutMs}ms in state ${this._state}`,
-          context: { userOpHash: this._userOpHash, state: this._state, timeoutMs },
+          debug: { userOpHash: this._userOpHash, state: this._state, timeoutMs },
           retryable: true,
         });
         if (this._state === "Pending") {

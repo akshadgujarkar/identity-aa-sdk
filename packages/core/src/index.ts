@@ -26,4 +26,12 @@ export {
   encodeInitCode,
   getUserOpHash,
 } from "./internal/userOp/index.js";
+export {
+  BundlerClient,
+  type BundlerClientOptions,
+  type BundlerGasEstimates,
+  translateBundlerError,
+  extractAACode,
+} from "./internal/bundler/index.js";
+
 

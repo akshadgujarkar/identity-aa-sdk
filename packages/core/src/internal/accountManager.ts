@@ -14,6 +14,7 @@ import { LocalSigner } from "./signer/signer.js";
 import { type KeyStore, InMemoryKeyStore } from "./signer/keystore.js";
 import { deriveAccountSalt } from "./salt.js";
 import { ChainClient } from "./chain.js";
+import { BundlerClient } from "./bundler/bundlerClient.js";
 import { TransactionEngine } from "./transactionEngine/index.js";
 
 export interface AccountManagerOptions {
@@ -21,6 +22,7 @@ export interface AccountManagerOptions {
   readonly resolver?: IdentityResolver;
   readonly keyStore?: KeyStore;
   readonly chainClient?: ChainClient;
+  readonly bundlerClient?: BundlerClient;
 }
 
 /**
@@ -32,6 +34,7 @@ export class AccountManager {
   private readonly resolver?: IdentityResolver;
   private readonly keyStore: KeyStore;
   private readonly chainClient: ChainClient;
+  private readonly bundlerClient: BundlerClient;
   private readonly accountCache = new Map<string, Account>();
 
   constructor(options: AccountManagerOptions) {
@@ -39,6 +42,12 @@ export class AccountManager {
     this.resolver = options.resolver;
     this.keyStore = options.keyStore ?? new InMemoryKeyStore();
     this.chainClient = options.chainClient ?? new ChainClient(options.config.network.rpcUrl);
+    this.bundlerClient =
+      options.bundlerClient ??
+      new BundlerClient({
+        bundlerUrl: options.config.network.bundlerUrl ?? "http://127.0.0.1:4337",
+        entryPointAddress: options.config.network.entryPointAddress,
+      });
   }
 
   /**
@@ -178,6 +187,7 @@ export class AccountManager {
           senderAddress: address,
           ownerAddress: signerAddress,
           salt,
+          bundlerClient: this.bundlerClient,
         });
         return engine.sendTransaction(intent);
       },
@@ -198,6 +208,7 @@ export class AccountManager {
           senderAddress: address,
           ownerAddress: signerAddress,
           salt,
+          bundlerClient: this.bundlerClient,
         });
         return engine.sendTransaction(intents);
       },

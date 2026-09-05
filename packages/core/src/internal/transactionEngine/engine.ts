@@ -13,6 +13,7 @@ import {
   TransactionError,
 } from "../../errors/categories.js";
 import { ChainClient } from "../chain.js";
+import { BundlerClient } from "../bundler/bundlerClient.js";
 import { encodeExecuteCalldata, encodeExecuteBatchCalldata, encodeInitCode } from "../userOp/calldata.js";
 import { packAccountGasLimits, packGasFees, type PackedUserOperation } from "../userOp/types.js";
 import { getUserOpHash } from "../userOp/hash.js";
@@ -27,7 +28,9 @@ export interface TransactionEngineOptions {
   readonly senderAddress: HexAddress;
   readonly ownerAddress: HexAddress;
   readonly salt: HexData;
-  /** Optional submit handler for mocking or Phase 7 BundlerClient integration */
+  /** Optional BundlerClient instance for RPC estimation, submission, and polling */
+  readonly bundlerClient?: BundlerClient;
+  /** Optional custom submit handler for mocking or testing */
   readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
 }
 
@@ -40,6 +43,7 @@ export class TransactionEngine {
   private readonly senderAddress: HexAddress;
   private readonly ownerAddress: HexAddress;
   private readonly salt: HexData;
+  private readonly bundlerClient?: BundlerClient;
   private readonly submitHandler?: (userOp: PackedUserOperation) => Promise<HexData>;
 
   constructor(options: TransactionEngineOptions) {
@@ -51,6 +55,7 @@ export class TransactionEngine {
     this.senderAddress = options.senderAddress;
     this.ownerAddress = options.ownerAddress;
     this.salt = options.salt;
+    this.bundlerClient = options.bundlerClient;
     this.submitHandler = options.submitHandler;
   }
 
@@ -72,7 +77,7 @@ export class TransactionEngine {
         throw new TransactionError({
           code: "INVALID_INTENT_RECIPIENT",
           message: `Intent at index ${i} has invalid or missing 'to' address: ${intent?.to}`,
-          context: { index: i, intent },
+          debug: { index: i, intent },
           retryable: false,
         });
       }
@@ -87,7 +92,7 @@ export class TransactionEngine {
           throw new TransactionError({
             code: "INVALID_INTENT_VALUE",
             message: `Intent at index ${i} has invalid 'value': ${intent.value}`,
-            context: { index: i, intent },
+            debug: { index: i, intent },
             retryable: false,
           });
         }
@@ -141,13 +146,47 @@ export class TransactionEngine {
       });
     }
 
-    const verificationGasLimit =
+    let verificationGasLimit =
       gasOverrides?.verificationGasLimit ?? (initCode !== "0x" ? 300_000n : 150_000n);
-    const callGasLimit = gasOverrides?.callGasLimit ?? 100_000n;
-    const preVerificationGas = gasOverrides?.preVerificationGas ?? 50_000n;
+    let callGasLimit = gasOverrides?.callGasLimit ?? 100_000n;
+    let preVerificationGas = gasOverrides?.preVerificationGas ?? 50_000n;
     const maxFeePerGas = gasOverrides?.maxFeePerGas ?? fees.maxFeePerGas;
     const maxPriorityFeePerGas =
       gasOverrides?.maxPriorityFeePerGas ?? fees.maxPriorityFeePerGas;
+
+    // Optional real ERC-4337 gas estimation via BundlerClient
+    if (this.bundlerClient && !gasOverrides) {
+      try {
+        const dummyOp: PackedUserOperation = {
+          sender: this.senderAddress,
+          nonce,
+          initCode,
+          callData,
+          accountGasLimits: packAccountGasLimits(verificationGasLimit, callGasLimit),
+          preVerificationGas,
+          gasFees: packGasFees(maxPriorityFeePerGas, maxFeePerGas),
+          paymasterAndData: "0x",
+          signature: ("0x" + "00".repeat(65)) as HexData,
+        };
+        const estimates = await this.bundlerClient.estimateUserOperationGas(
+          dummyOp,
+          this.entryPointAddress
+        );
+        verificationGasLimit = estimates.verificationGasLimit;
+        callGasLimit = estimates.callGasLimit;
+        preVerificationGas = estimates.preVerificationGas;
+      } catch (err) {
+        if (err instanceof GasError || err instanceof BundlerError) {
+          throw err;
+        }
+        throw new GasError({
+          code: "GAS_ESTIMATION_FAILED",
+          message: `Bundler gas estimation failed: ${err instanceof Error ? err.message : String(err)}`,
+          cause: err instanceof Error ? err : undefined,
+          retryable: true,
+        });
+      }
+    }
 
     const accountGasLimits = packAccountGasLimits(verificationGasLimit, callGasLimit);
     const gasFees = packGasFees(maxPriorityFeePerGas, maxFeePerGas);
@@ -193,7 +232,7 @@ export class TransactionEngine {
       throw new SigningError({
         code: "USEROP_SIGNING_FAILED",
         message: `Failed to sign UserOperation: ${err instanceof Error ? err.message : String(err)}`,
-        context: { userOpHash: hash },
+        debug: { userOpHash: hash },
         retryable: false,
         cause: err instanceof Error ? err : undefined,
       });
@@ -217,6 +256,7 @@ export class TransactionEngine {
         err instanceof TransactionError
           ? err
           : new TransactionError({
+              code: "INTENT_VALIDATION_FAILED",
               message: "Intent validation failed",
               cause: err instanceof Error ? err : undefined,
               retryable: false,
@@ -268,6 +308,12 @@ export class TransactionEngine {
       if (this.submitHandler) {
         const submittedHash = await this.submitHandler(signedOp);
         sm.setUserOpHash(submittedHash);
+      } else if (this.bundlerClient) {
+        const submittedHash = await this.bundlerClient.sendUserOperation(
+          signedOp,
+          this.entryPointAddress
+        );
+        sm.setUserOpHash(submittedHash);
       }
     } catch (err) {
       const bundlerErr =
@@ -285,6 +331,33 @@ export class TransactionEngine {
 
     // 5. Pending State
     sm.transitionTo("Pending");
+
+    // Automatically initiate background receipt polling when bundlerClient is available
+    if (this.bundlerClient && sm.transactionHash && sm.transactionHash !== "0x") {
+      const opHash = sm.transactionHash;
+      this.bundlerClient
+        .pollUserOperationReceipt(opHash)
+        .then((receipt) => {
+          if (sm.state === "Pending") {
+            sm.confirm(receipt);
+          }
+        })
+        .catch((err) => {
+          if (sm.state === "Pending") {
+            const pollErr =
+              err instanceof TransactionError
+                ? err
+                : new TransactionError({
+                    code: "RECEIPT_POLL_FAILED",
+                    message: `Receipt polling failed: ${err instanceof Error ? err.message : String(err)}`,
+                    cause: err instanceof Error ? err : undefined,
+                    retryable: true,
+                    debug: { userOpHash: opHash },
+                  });
+            sm.fail(pollErr);
+          }
+        });
+    }
 
     return sm;
   }
