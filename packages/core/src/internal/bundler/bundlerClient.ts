@@ -97,7 +97,7 @@ export class BundlerClient {
   public readonly requestTimeoutMs: number;
   public readonly pollIntervalMs: number;
   public readonly pollTimeoutMs: number;
-  private readonly fetchFn: typeof fetch;
+  private readonly customFetch?: typeof fetch;
   private idCounter = 1;
 
   constructor(options: BundlerClientOptions) {
@@ -105,7 +105,17 @@ export class BundlerClient {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
     this.pollIntervalMs = options.pollIntervalMs ?? 1_500;
     this.pollTimeoutMs = options.pollTimeoutMs ?? 60_000;
-    this.fetchFn = options.fetchFn ?? (typeof fetch !== "undefined" ? fetch : globalThis.fetch);
+    this.customFetch = options.fetchFn;
+  }
+
+  private async fetchWrapper(url: string, init: RequestInit): Promise<Response> {
+    if (this.customFetch) {
+      return this.customFetch(url, init);
+    }
+    if (typeof window !== "undefined" && typeof window.fetch === "function") {
+      return window.fetch(url, init);
+    }
+    return globalThis.fetch(url, init);
   }
 
   /**
@@ -130,7 +140,7 @@ export class BundlerClient {
       const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
       try {
-        const res = await this.fetchFn(this.bundlerUrl, {
+        const res = await this.fetchWrapper(this.bundlerUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
