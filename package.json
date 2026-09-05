@@ -18,6 +18,7 @@
     "build:contracts": "powershell -ExecutionPolicy Bypass -File ./scripts/run-forge.ps1 build",
     "chain": "powershell -ExecutionPolicy Bypass -File ./scripts/start-chain.ps1",
     "chain:bg": "powershell -ExecutionPolicy Bypass -File ./scripts/start-chain.ps1 -Background",
+    "bundler": "tsx scripts/bundler.ts",
     "test:smoke": "tsx tests/smoke.test.ts"
   },
   "devDependencies": {

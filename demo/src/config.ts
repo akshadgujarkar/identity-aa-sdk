@@ -43,7 +43,7 @@ export function createDemoSDKConfig(options?: DemoConfigOptions): SDKConfig {
       rpcUrl: options?.rpcUrl ?? DEFAULT_LOCAL_NETWORK.rpcUrl,
       entryPointAddress: options?.entryPointAddress ?? DEFAULT_LOCAL_NETWORK.entryPointAddress,
       factoryAddress: options?.factoryAddress ?? DEFAULT_LOCAL_NETWORK.factoryAddress,
-      bundlerUrl: options?.bundlerUrl,
+      bundlerUrl: options?.bundlerUrl ?? "http://127.0.0.1:4337",
       paymasterAddress: options?.paymasterAddress ?? DEFAULT_LOCAL_NETWORK.paymasterAddress,
     },
     sponsorship: {
