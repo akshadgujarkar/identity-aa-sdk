@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
+import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {SmartAccountFactory} from "../src/SmartAccountFactory.sol";
 import {Paymaster} from "../src/Paymaster.sol";
 
@@ -10,8 +11,8 @@ contract DeployScaffold is Script {
 
     function run() external {
         vm.startBroadcast();
-        SmartAccountFactory factory = new SmartAccountFactory(ENTRY_POINT);
-        Paymaster paymaster = new Paymaster(ENTRY_POINT, msg.sender);
+        SmartAccountFactory factory = new SmartAccountFactory(IEntryPoint(ENTRY_POINT));
+        Paymaster paymaster = new Paymaster(IEntryPoint(ENTRY_POINT), msg.sender);
         vm.stopBroadcast();
 
         console.log("SmartAccountFactory deployed to:", address(factory));
