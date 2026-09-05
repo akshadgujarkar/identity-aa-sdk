@@ -314,7 +314,6 @@ describe("Phase 08 - TransactionEngine Sponsored Execution", () => {
         sponsorship: { type: "none" },
       },
       resolver: {
-        provider: "clerk",
         resolve: async () => ({ provider: "clerk", subjectId: "user_test" }),
       },
     });

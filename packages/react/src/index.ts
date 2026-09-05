@@ -1,28 +1,45 @@
 /**
  * @identity-aa-sdk/react
- * React bindings for Identity AA SDK
+ * React bindings and hooks for Identity AA SDK.
+ * Specifications defined in docs/SDK_ARCHITECTURE.md and docs/phases/PHASE_09_REACT.md.
  */
 
-import type { SDKConfig, IdentityResolver } from "@identity-aa-sdk/core";
+// Provider and context exports
+export {
+  IdentityAAProvider,
+  type IdentityAAProviderProps,
+} from "./Provider.js";
 
-export interface IdentityAAProviderProps {
-  config: SDKConfig;
-  resolver: IdentityResolver;
-  children?: any;
-}
+export {
+  IdentityAAContext,
+  useIdentityAA,
+  type IdentityAAContextValue,
+} from "./context.js";
 
-export interface UseSmartAccountResult {
-  address?: string;
-  isDeployed: boolean;
-  isLoading: boolean;
-  error?: Error;
-}
+// Hook exports
+export {
+  useSmartAccount,
+  type UseSmartAccountResult,
+} from "./useSmartAccount.js";
 
-// Scaffold hooks and provider - full implementation in Phase 9
-export function useSmartAccount(): UseSmartAccountResult {
-  return {
-    address: undefined,
-    isDeployed: false,
-    isLoading: false,
-  };
-}
+export {
+  useTransaction,
+  type UseTransactionResult,
+  type UseTransactionOptions,
+} from "./useTransaction.js";
+
+// Re-export key core types for consumer convenience
+export type {
+  Account,
+  TransactionIntent,
+  Receipt,
+  TransactionHandle,
+  TransactionState,
+  SDKConfig,
+  IdentityResolver,
+  AppIdentity,
+  HexAddress,
+  HexData,
+  SponsorshipPolicy,
+  IdentityAASDK,
+} from "@identity-aa-sdk/core";
