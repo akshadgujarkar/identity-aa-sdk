@@ -1,0 +1,16 @@
+{
+  "name": "@identity-aa-sdk/demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example application demonstrating identity-driven account abstraction",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@identity-aa-sdk/core": "*",
+    "@identity-aa-sdk/clerk": "*",
+    "@identity-aa-sdk/react": "*"
+  }
+}
