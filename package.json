@@ -12,7 +12,7 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "test": "npm run test:contracts && npm run test:unit && npm run test:smoke",
-    "test:unit": "tsx --test packages/*/tests/*.test.ts demo/tests/*.test.ts",
+    "test:unit": "tsx --test packages/*/tests/*.test.ts demo/tests/*.test.ts tests/*.test.ts",
     "test:contracts": "powershell -ExecutionPolicy Bypass -File ./scripts/run-forge.ps1 test",
     "build:contracts": "powershell -ExecutionPolicy Bypass -File ./scripts/run-forge.ps1 build",
     "chain": "powershell -ExecutionPolicy Bypass -File ./scripts/start-chain.ps1",

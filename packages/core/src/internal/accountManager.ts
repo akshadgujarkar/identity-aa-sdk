@@ -152,7 +152,12 @@ export class AccountManager {
         );
       } else {
         // Fallback calculation using standard CREATE2 formula if factoryAddress is omitted
-        accountAddress = "0x0000000000000000000000000000000000000000";
+        accountAddress = getContractAddress({
+          from: this.config.network.entryPointAddress,
+          opcode: "CREATE2",
+          salt,
+          bytecodeHash: keccak256(encodePacked(["address", "bytes32"], [signerAddress, salt])),
+        });
       }
 
       // 5. Query on-chain deployment state
