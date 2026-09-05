@@ -9,6 +9,7 @@ import type { TransactionIntent } from "../../types/transaction.js";
 import {
   BundlerError,
   GasError,
+  NetworkError,
   SigningError,
   SponsorshipError,
   TransactionError,
@@ -234,8 +235,7 @@ export class TransactionEngine {
       } catch (err) {
         if (
           (this.environment === "development" || this.environment === "test") &&
-          err instanceof BundlerError &&
-          err.retryable
+          (err instanceof NetworkError || (err instanceof BundlerError && err.retryable) || /fetch/i.test(String(err)))
         ) {
           // Dev fallback: keep deterministic safe gas limits when bundler service is not running locally
           console.warn("[IdentityAA] Bundler unreachable for gas estimation, using deterministic safe limits.");

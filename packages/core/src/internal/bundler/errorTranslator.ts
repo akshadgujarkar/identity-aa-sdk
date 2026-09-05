@@ -70,7 +70,7 @@ export function translateBundlerError(
 
   // 1. Check for Network / Connection Errors
   if (
-    /fetch failed|network|econnrefused|etimedout|enotfound|abort/i.test(rawMessage) ||
+    /failed to fetch|fetch failed|network|econnrefused|etimedout|enotfound|abort/i.test(rawMessage) ||
     (error && typeof error === "object" && "name" in error && error.name === "AbortError")
   ) {
     return new NetworkError({

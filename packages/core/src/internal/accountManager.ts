@@ -37,7 +37,7 @@ export class AccountManager {
   private readonly resolver?: IdentityResolver;
   private readonly keyStore: KeyStore;
   private readonly chainClient: ChainClient;
-  private readonly bundlerClient: BundlerClient;
+  private readonly bundlerClient?: BundlerClient;
   private readonly gasPolicyManager: GasPolicyManager;
   private readonly accountCache = new Map<string, Account>();
 
@@ -48,10 +48,12 @@ export class AccountManager {
     this.chainClient = options.chainClient ?? new ChainClient(options.config.network.rpcUrl);
     this.bundlerClient =
       options.bundlerClient ??
-      new BundlerClient({
-        bundlerUrl: options.config.network.bundlerUrl ?? "http://127.0.0.1:4337",
-        entryPointAddress: options.config.network.entryPointAddress,
-      });
+      (options.config.network.bundlerUrl
+        ? new BundlerClient({
+            bundlerUrl: options.config.network.bundlerUrl,
+            entryPointAddress: options.config.network.entryPointAddress,
+          })
+        : undefined);
     this.gasPolicyManager =
       options.gasPolicyManager ??
       new GasPolicyManager(options.config.sponsorship, options.config.environment);
@@ -160,8 +162,13 @@ export class AccountManager {
         });
       }
 
-      // 5. Query on-chain deployment state
-      const isDeployed = await this.chainClient.isContractDeployed(accountAddress);
+      // 5. Query on-chain deployment state (safely defaulting to false if offline)
+      let isDeployed = false;
+      try {
+        isDeployed = await this.chainClient.isContractDeployed(accountAddress);
+      } catch {
+        isDeployed = false;
+      }
 
       // 6. Construct Account representation
       const account = this._createAccountObject(
