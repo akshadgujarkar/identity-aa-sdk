@@ -479,6 +479,11 @@ function RootApp() {
                     outline: "none",
                   }}
                 />
+                {clerkKey.startsWith("sk_") && (
+                  <div style={{ color: "#ef4444", fontSize: "13px", marginBottom: "12px" }}>
+                    ⚠️ You entered a Secret Key (<code>sk_...</code>). Please use your <strong>Publishable Key</strong> (<code>pk_test_...</code> or <code>pk_live_...</code>) from your Clerk dashboard API Keys.
+                  </div>
+                )}
                 <br />
                 <button
                   type="submit"
